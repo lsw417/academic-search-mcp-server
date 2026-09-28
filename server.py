@@ -27,6 +27,9 @@ async def make_api_request(url: str, headers: dict = None, params: dict = None) 
     """Make a request to the API with proper error handling."""
     if headers is None:
         headers = { "User-Agent": USER_AGENT }
+    # S2_API_KEY가 있으면 Semantic Scholar 요청에만 x-api-key 헤더를 붙인다 (무인증 공유 풀 → 전용 한도)
+    if url.startswith(SEMANTIC_SCHOLAR_API) and os.environ.get("S2_API_KEY"):
+        headers = {**headers, "x-api-key": os.environ["S2_API_KEY"]}
     async with httpx.AsyncClient() as client:
         try:
             response = await client.get(url, headers=headers, params=params, timeout=30.0)
@@ -105,8 +108,13 @@ async def search_papers(query: str, limit: int = 10) -> str:
     
     try:
         # Search Semantic Scholar
-        semantic_url = f"{SEMANTIC_SCHOLAR_API}/paper/search?query={query}&limit={limit}"
-        semantic_data = await make_api_request(semantic_url)
+        semantic_url = f"{SEMANTIC_SCHOLAR_API}/paper/search"
+        semantic_params = {
+            "query": query,
+            "limit": limit,
+            "fields": "title,authors,year,paperId,externalIds,abstract,venue,isOpenAccess,openAccessPdf,tldr"
+        }
+        semantic_data = await make_api_request(semantic_url, params=semantic_params)
 
         # Search Crossref
         crossref_url = f"{CROSSREF_API}?query={query}&rows={limit}"
@@ -114,9 +122,10 @@ async def search_papers(query: str, limit: int = 10) -> str:
 
         results = []
         
-        if semantic_data and 'papers' in semantic_data:
+        # S2 /paper/search 응답의 결과 키는 'papers'가 아니라 'data'
+        if semantic_data and 'data' in semantic_data:
             results.append("=== Semantic Scholar Results ===")
-            for paper in semantic_data['papers']:
+            for paper in semantic_data['data']:
                 results.append(format_paper_data(paper, "semantic_scholar"))
 
         if crossref_data and 'items' in crossref_data.get('message', {}):
