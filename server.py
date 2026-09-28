@@ -19,6 +19,7 @@ mcp = FastMCP("scientific_literature")
 
 # Constants
 SEMANTIC_SCHOLAR_API = "https://api.semanticscholar.org/graph/v1"
+LAST_API_ERROR = {}  # url -> 마지막 실패 사유 (조용한 누락 방지용)
 CROSSREF_API = "https://api.crossref.org/works"
 USER_AGENT = "scientific-literature-app/1.0"
 
@@ -36,6 +37,7 @@ async def make_api_request(url: str, headers: dict = None, params: dict = None) 
             response.raise_for_status()
             return response.json()
         except Exception as e:
+            LAST_API_ERROR[url.split('?')[0]] = f"{type(e).__name__}: {str(e)[:120]}"
             return None
 
 def format_paper_data(data: dict, source: str) -> str:
@@ -127,6 +129,10 @@ async def search_papers(query: str, limit: int = 10) -> str:
             results.append("=== Semantic Scholar Results ===")
             for paper in semantic_data['data']:
                 results.append(format_paper_data(paper, "semantic_scholar"))
+        else:
+            reason = LAST_API_ERROR.get(semantic_url, "empty response")
+            key_note = "" if os.environ.get("S2_API_KEY") else " (S2_API_KEY not set in this process — shared rate pool)"
+            results.append(f"=== Semantic Scholar: unavailable — {reason}{key_note} ===")
 
         if crossref_data and 'items' in crossref_data.get('message', {}):
             results.append("\n=== Crossref Results ===")
